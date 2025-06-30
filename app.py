@@ -246,17 +246,25 @@ if registros:
         else:
             mejora = "= 0"
         improved = "✅ Sí" if r.get('improved') else "❌ No"
+        saturacion_despues = f"{edges_after:,}" if edges_after else "—"
         with st.expander(f"[{inicio_col}] {'Mejoró' if r.get('improved') else 'Sin cambio'}"):
-            cols = st.columns([1, 2])
+            cols = st.columns([1, 1, 2])
             with cols[0]:
-                st.image(base64_to_image(r.get("image_base64", "")), caption="ANTES", width=160)
+                st.markdown("**ANTES**")
+                st.image(base64_to_image(r.get("image_base64", "")), width=140)
             with cols[1]:
+                st.markdown("**DESPUÉS**")
+                if r.get("image_after"):
+                    st.image(base64_to_image(r.get("image_after", "")), width=140)
+                else:
+                    st.info("Aún no hay foto del después.")
+            with cols[2]:
                 st.markdown(f"""
                 - **Inicio:** `{inicio_col}`
                 - **Fin:** `{fin_col}`
                 - **Duración:** `{format_seconds(dur)}`
                 - **Saturación antes:** `{edges_before:,}`
-                - **Saturación después:** `{edges_after if edges_after else '—'}`
+                - **Saturación después:** `{saturacion_despues}`
                 - **Diferencia:** {mejora}
                 - **¿Mejoró?:** {improved}
                 """)
