@@ -9,8 +9,8 @@ import getpass
 import os
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Ennen & Jälkeen", layout="centered")
-st.title("Ennen & Jälkeen")
+st.set_page_config(page_title="Ennen ja Jälkeen", layout="centered")
+st.title("Ennen ja Jälkeen")
 
 # --- CONEXIÓN A MONGO ---
 MONGO_URI = os.environ["MONGO_URI"]
