@@ -9,7 +9,7 @@ import getpass
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered")
-MONGO_URI = st.secrets["mongo_uri"]
+MONGO_URI = os.environ["MONGO_URI"]
 client = pymongo.MongoClient(MONGO_URI)
 db = client.cleanup
 collection = db.entries
