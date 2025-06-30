@@ -12,7 +12,7 @@ st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered"
 
 # --- CONEXIÓN A MONGO ---
 import os
-MONGO_URI = os.environ["MONGO_URI"]
+MONGO_URI = os.getenv["MONGO_URI"]
 client = pymongo.MongoClient(MONGO_URI)
 db = client.cleanup
 collection = db.entries
