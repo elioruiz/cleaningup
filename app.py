@@ -1,5 +1,5 @@
-import os
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh  # <-- Nuevo: refresco automático
 import pymongo
 from datetime import datetime, timezone
 from PIL import Image
@@ -10,6 +10,12 @@ import getpass
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered")
+
+# --- Refresco automático global cada 3 segundos ---
+st_autorefresh(interval=3000, key="datarefresh")
+
+# --- CONEXIÓN A MONGO ---
+import os
 MONGO_URI = os.environ["MONGO_URI"]
 client = pymongo.MongoClient(MONGO_URI)
 db = client.cleanup
@@ -114,6 +120,7 @@ with tabs[0]:
     last = collection.find_one({"session_active": True}) or collection.find_one(sort=[("start_time", -1)])
 
     if last and last.get("session_active"):
+        st.info(f"Sesión activa iniciada por: {last['meta']['pellizcos'][0]['user']}")  # Info extra
         session_id = last["_id"]
         img_before = base64_to_image(last.get("image_base64", ""))
         before_edges = last.get("edges", 0)
