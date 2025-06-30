@@ -9,8 +9,8 @@ import getpass
 import os
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered")
-st.title("🧹 Visualizador de Limpieza")
+st.set_page_config(page_title="Ennen & Jälkeen", layout="centered")
+st.title("Ennen & Jälkeen")
 
 # --- CONEXIÓN A MONGO ---
 MONGO_URI = os.environ["MONGO_URI"]
@@ -118,7 +118,7 @@ if estado == "activa":
     st.success(f"Sesión activa iniciada por: {last['meta']['pellizcos'][0]['user']}")
     col1, col2 = st.columns([1, 2])
     with col1:
-        st.image(base64_to_image(last.get("image_base64", "")), caption="ANTES", width=200)
+        st.image(base64_to_image(last.get("image_base64", "")), caption="ENNEN", width=200)
         before_edges = last.get("edges", 0)
         st.markdown(f"**Saturación visual antes:** `{before_edges:,}`")
     with col2:
@@ -158,8 +158,8 @@ if estado == "activa":
 # --- ESPERANDO FOTO DESPUÉS ---
 elif estado == "esperando_despues":
     st.info("Sesión finalizada. Sube la foto del DESPUÉS para completar el registro.")
-    st.image(base64_to_image(last.get("image_base64", "")), caption="ANTES (guardado)", width=220)
-    img_after_file = st.file_uploader("Sube la foto del DESPUÉS", type=["jpg", "jpeg", "png"], key="after", label_visibility="visible")
+    st.image(base64_to_image(last.get("image_base64", "")), caption="ENNEN (guardado)", width=220)
+    img_after_file = st.file_uploader("Sube la foto del JÄLKEEN", type=["jpg", "jpeg", "png"], key="after", label_visibility="visible")
     if img_after_file is not None:
         with st.spinner("Guardando foto del después..."):
             try:
@@ -179,20 +179,20 @@ elif estado == "esperando_despues":
                         "improved": improved
                     }}
                 )
-                agrega_pellizco(last["_id"], st.session_state.user_login, "Se subió el DESPUÉS")
-                actualiza_meta_global(st.session_state.user_login, "Se subió el DESPUÉS")
+                agrega_pellizco(last["_id"], st.session_state.user_login, "Se subió el JÄLKEEN")
+                actualiza_meta_global(st.session_state.user_login, "Se subió el JÄLKEEN")
                 st.success("¡Foto del después registrada exitosamente!")
                 st.rerun()
             except Exception as e:
                 import traceback
                 st.error(f"Error al guardar la foto del después: {e}")
                 st.text(traceback.format_exc())
-    st.info("Cuando subas la foto del después, se completará la sesión en el historial.")
+    st.info("Cuando subas la foto del JÄLKEEN, se completará la sesión en el historial.")
 
 # --- SIN SESIÓN ACTIVA ---
 else:
-    st.info("No hay sesión activa. Inicia una nueva sesión subiendo una foto de ANTES.")
-    img_file = st.file_uploader("Sube la foto del ANTES", type=["jpg", "jpeg", "png"], key="before_new")
+    st.info("No hay sesión activa. Inicia una nueva sesión subiendo una foto de ENNEN.")
+    img_file = st.file_uploader("Sube la foto del ENNEN", type=["jpg", "jpeg", "png"], key="before_new")
     if img_file:
         img = Image.open(img_file)
         resized = resize_image(img)
@@ -208,12 +208,12 @@ else:
                 "pellizcos": [{
                     "user": st.session_state.user_login,
                     "datetime": now_utc,
-                    "mensaje": "Se subió el ANTES"
+                    "mensaje": "Se subió el ENNEN"
                 }]
             }
         })
-        agrega_pellizco(session.inserted_id, st.session_state.user_login, "Se subió el ANTES")
-        actualiza_meta_global(st.session_state.user_login, "Se subió el ANTES")
+        agrega_pellizco(session.inserted_id, st.session_state.user_login, "Se subió el ENNEN")
+        actualiza_meta_global(st.session_state.user_login, "Se subió el ENNEN")
         st.success("¡Sesión iniciada! Cuando termines, detén el cronómetro.")
         st.rerun()
 
@@ -250,14 +250,14 @@ if registros:
         with st.expander(f"[{inicio_col}] {'Mejoró' if r.get('improved') else 'Sin cambio'}"):
             cols = st.columns([1, 1, 2])
             with cols[0]:
-                st.markdown("**ANTES**")
+                st.markdown("### ENNEN")
                 st.image(base64_to_image(r.get("image_base64", "")), width=140)
             with cols[1]:
-                st.markdown("**DESPUÉS**")
+                st.markdown("### JÄLKEEN")
                 if r.get("image_after"):
                     st.image(base64_to_image(r.get("image_after", "")), width=140)
                 else:
-                    st.info("Aún no hay foto del después.")
+                    st.info("Aún no hay foto del JÄLKEEN.")
             with cols[2]:
                 st.markdown(f"""
                 - **Inicio:** `{inicio_col}`
@@ -270,12 +270,3 @@ if registros:
                 """)
 else:
     st.info("No hay registros finalizados.")
-
-with st.expander("🧨 Borrar todos los registros"):
-    st.warning("¡Esta acción eliminará todo el historial! No se puede deshacer.")
-    if st.button("🗑️ Borrar todo", use_container_width=True):
-        now_utc = datetime.now(timezone.utc)
-        collection.delete_many({})
-        actualiza_meta_global(st.session_state.user_login, "Se borraron todos los registros")
-        st.success("Registros eliminados.")
-        st.rerun()
