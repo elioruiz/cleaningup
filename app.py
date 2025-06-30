@@ -124,8 +124,11 @@ if estado == "activa":
     with col2:
         st.info("Cuando termines la limpieza, detén el cronómetro para finalizar la sesión.")
         # Cronómetro
-        start_time = last["start_time"].astimezone(CO)
-        elapsed = int((datetime.now(CO) - start_time).total_seconds())
+        start_time = last["start_time"]
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        start_time_co = start_time.astimezone(CO)
+        elapsed = int((datetime.now(CO) - start_time_co).total_seconds())
         cronometro = st.empty()
         stop = st.button("⏹️ Detener y Finalizar sesión", type="primary", use_container_width=True)
         for i in range(elapsed, elapsed + 100000):
@@ -133,7 +136,12 @@ if estado == "activa":
             time.sleep(1)
             if stop:
                 end_time = datetime.now(timezone.utc)
-                duration = int((end_time - last['start_time']).total_seconds())
+                # Asegura ambos aware
+                if last['start_time'].tzinfo is None:
+                    start_aware = last['start_time'].replace(tzinfo=timezone.utc)
+                else:
+                    start_aware = last['start_time']
+                duration = int((end_time - start_aware).total_seconds())
                 collection.update_one(
                     {"_id": last["_id"], "session_active": True},
                     {"$set": {
@@ -218,12 +226,18 @@ registros = list(collection.find({"session_active": False}).sort("start_time", -
 if registros:
     data = []
     for r in registros:
-        inicio = r["start_time"].astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
+        # Forzar tzinfo en start/end antes de convertir
+        inicio = r["start_time"]
+        if inicio.tzinfo is None:
+            inicio = inicio.replace(tzinfo=timezone.utc)
+        inicio_col = inicio.astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
         fin = r.get("end_time")
         if isinstance(fin, datetime):
-            fin = fin.astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
+            if fin.tzinfo is None:
+                fin = fin.replace(tzinfo=timezone.utc)
+            fin_col = fin.astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
         else:
-            fin = "—"
+            fin_col = "—"
         dur = r.get("duration_seconds", 0)
         edges_before = r.get('edges', 0)
         edges_after = r.get('edges_after', 0)
@@ -236,8 +250,8 @@ if registros:
         else:
             mejora = "= 0"
         data.append({
-            "Inicio": inicio,
-            "Fin": fin,
+            "Inicio (CO)": inicio_col,
+            "Fin (CO)": fin_col,
             "Duración": format_seconds(dur),
             "Saturación antes": edges_before,
             "Saturación después": edges_after if edges_after else "—",
