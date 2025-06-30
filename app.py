@@ -1,17 +1,18 @@
 import streamlit as st
 import pymongo
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from PIL import Image
 import io, base64
 import pytz
 import time
 import getpass
+import os
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered")
+st.title("🧹 Visualizador de Limpieza")
 
 # --- CONEXIÓN A MONGO ---
-import os
 MONGO_URI = os.environ["MONGO_URI"]
 client = pymongo.MongoClient(MONGO_URI)
 db = client.cleanup
@@ -68,7 +69,6 @@ def agrega_pellizco(session_id, user, mensaje):
         upsert=True
     )
 
-# --- FUNCIONES DE SINCRONIZACIÓN GLOBAL ---
 def actualiza_meta_global(user, mensaje):
     meta.update_one(
         {},
@@ -82,7 +82,7 @@ def actualiza_meta_global(user, mensaje):
         upsert=True
     )
 
-# --- BLOQUE DE SINCRONIZACIÓN GLOBAL (antes de cualquier UI/tabs) ---
+# --- BLOQUE DE SINCRONIZACIÓN GLOBAL ---
 if "ultimo_pellizco_global" not in st.session_state:
     st.session_state.ultimo_pellizco_global = None
 
@@ -100,50 +100,42 @@ if "ultimo_pellizco" not in st.session_state:
 if "user_login" not in st.session_state:
     st.session_state.user_login = getpass.getuser()
 
-tabs = st.tabs(["✨ Sesión Actual", "🗂️ Historial"])
+# --- UI PRINCIPAL ---
+st.subheader("Registro de Sesión de Limpieza")
 
-with tabs[0]:
-    st.markdown("<h1 style='text-align:center; color:#2b7a78;'>🧹 Visualizador de Limpieza</h1>", unsafe_allow_html=True)
-    st.divider()
+estado = None
+last = collection.find_one({"session_active": True}) or collection.find_one(sort=[("start_time", -1)])
 
-    # --- Consulta la sesión activa o la última ---
-    last = collection.find_one({"session_active": True}) or collection.find_one(sort=[("start_time", -1)])
+if last and last.get("session_active"):
+    estado = "activa"
+elif last and not last.get("session_active") and not last.get("image_after"):
+    estado = "esperando_despues"
+else:
+    estado = "sin_sesion"
 
-    if last and last.get("session_active"):
-        st.info(f"Sesión activa iniciada por: {last['meta']['pellizcos'][0]['user']}")  # Info extra
-        session_id = last["_id"]
-        img_before = base64_to_image(last.get("image_base64", ""))
+# --- SESIÓN ACTIVA ---
+if estado == "activa":
+    st.success(f"Sesión activa iniciada por: {last['meta']['pellizcos'][0]['user']}")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.image(base64_to_image(last.get("image_base64", "")), caption="ANTES", width=200)
         before_edges = last.get("edges", 0)
-        st.success("Sesión activa. Cuando termines, detén el cronómetro.")
-        st.image(img_before, caption="ANTES", width=320)
         st.markdown(f"**Saturación visual antes:** `{before_edges:,}`")
+    with col2:
+        st.info("Cuando termines la limpieza, detén el cronómetro para finalizar la sesión.")
+        # Cronómetro
+        start_time = last["start_time"].astimezone(CO)
+        elapsed = int((datetime.now(CO) - start_time).total_seconds())
         cronometro = st.empty()
-        stop_button = st.empty()
-        stop_pressed = False
-
-        with stop_button:
-            stop_pressed = st.button("⏹️ Detener cronómetro / Finalizar sesión", type="primary", use_container_width=True)
-
-        start_time = last["start_time"]
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=timezone.utc)
-        else:
-            start_time = start_time.astimezone(timezone.utc)
-        while True:
-            doc = collection.find_one({"_id": session_id})
-            if not doc or not doc.get("session_active", False):
-                st.success("¡Sesión finalizada desde otro dispositivo o ventana!")
-                st.rerun()
-                break
-            start_time_co = start_time.astimezone(CO)
-            elapsed = (datetime.now(CO) - start_time_co).total_seconds()
-            cronometro.markdown(f"⏱️ <b>Tiempo activo:</b> <code>{format_seconds(int(elapsed))}</code>", unsafe_allow_html=True)
+        stop = st.button("⏹️ Detener y Finalizar sesión", type="primary", use_container_width=True)
+        for i in range(elapsed, elapsed + 100000):
+            cronometro.markdown(f"### 🕒 Tiempo activo: {str(timedelta(seconds=i))}")
             time.sleep(1)
-            if stop_pressed:
+            if stop:
                 end_time = datetime.now(timezone.utc)
-                duration = int((end_time - start_time).total_seconds())
+                duration = int((end_time - last['start_time']).total_seconds())
                 collection.update_one(
-                    {"_id": doc["_id"], "session_active": True},
+                    {"_id": last["_id"], "session_active": True},
                     {"$set": {
                         "session_active": False,
                         "end_time": end_time,
@@ -151,116 +143,116 @@ with tabs[0]:
                         "improved": None
                     }}
                 )
-                agrega_pellizco(session_id, st.session_state.user_login, "Sesión finalizada, esperando DESPUÉS")
+                agrega_pellizco(last["_id"], st.session_state.user_login, "Sesión finalizada, esperando DESPUÉS")
                 actualiza_meta_global(st.session_state.user_login, "Sesión finalizada, esperando DESPUÉS")
                 st.success("¡Sesión finalizada! Ahora sube la foto del después cuando quieras.")
                 st.rerun()
-                break
+            time.sleep(1)
 
-    elif last and not last.get("session_active") and not last.get("image_after"):
-        st.warning("Sesión finalizada. Sube la foto del DESPUÉS para completar el registro.")
-        st.image(base64_to_image(last.get("image_base64", "")), caption="ANTES (guardado)", width=320)
-        img_after_file = st.file_uploader("DESPUÉS", type=["jpg", "jpeg", "png"], key="after", label_visibility="visible")
-        if img_after_file is not None:
-            with st.spinner("Guardando foto del después..."):
-                try:
-                    img_after = Image.open(img_after_file)
-                    resized_after = resize_image(img_after)
-                    img_b64_after = image_to_base64(resized_after)
-                    edges_after = simple_edge_score(resized_after)
-                    improved = False
-                    edges_before = last.get("edges", 0)
-                    if edges_before:
-                        improved = edges_after < edges_before * 0.9
-                    collection.update_one(
-                        {"_id": last["_id"]},
-                        {"$set": {
-                            "image_after": img_b64_after,
-                            "edges_after": edges_after,
-                            "improved": improved
-                        }}
-                    )
-                    agrega_pellizco(last["_id"], st.session_state.user_login, "Se subió el DESPUÉS")
-                    actualiza_meta_global(st.session_state.user_login, "Se subió el DESPUÉS")
-                    st.success("¡Foto del después registrada exitosamente!")
-                    st.rerun()
-                except Exception as e:
-                    import traceback
-                    st.error(f"Error al guardar la foto del después: {e}")
-                    st.text(traceback.format_exc())
-        st.info("Cuando subas la foto del después, se completará la sesión en el historial.")
+# --- ESPERANDO FOTO DESPUÉS ---
+elif estado == "esperando_despues":
+    st.info("Sesión finalizada. Sube la foto del DESPUÉS para completar el registro.")
+    st.image(base64_to_image(last.get("image_base64", "")), caption="ANTES (guardado)", width=220)
+    img_after_file = st.file_uploader("Sube la foto del DESPUÉS", type=["jpg", "jpeg", "png"], key="after", label_visibility="visible")
+    if img_after_file is not None:
+        with st.spinner("Guardando foto del después..."):
+            try:
+                img_after = Image.open(img_after_file)
+                resized_after = resize_image(img_after)
+                img_b64_after = image_to_base64(resized_after)
+                edges_after = simple_edge_score(resized_after)
+                improved = False
+                edges_before = last.get("edges", 0)
+                if edges_before:
+                    improved = edges_after < edges_before * 0.9
+                collection.update_one(
+                    {"_id": last["_id"]},
+                    {"$set": {
+                        "image_after": img_b64_after,
+                        "edges_after": edges_after,
+                        "improved": improved
+                    }}
+                )
+                agrega_pellizco(last["_id"], st.session_state.user_login, "Se subió el DESPUÉS")
+                actualiza_meta_global(st.session_state.user_login, "Se subió el DESPUÉS")
+                st.success("¡Foto del después registrada exitosamente!")
+                st.rerun()
+            except Exception as e:
+                import traceback
+                st.error(f"Error al guardar la foto del después: {e}")
+                st.text(traceback.format_exc())
+    st.info("Cuando subas la foto del después, se completará la sesión en el historial.")
 
-    else:
-        last_check = collection.find_one(sort=[("start_time", -1)])
-        if (not last or not last.get("session_active")) and last_check and last_check.get("session_active"):
-            st.rerun()
-        st.info("No hay sesión activa. Sube una foto de ANTES para iniciar.")
-        img_file = st.file_uploader("ANTES", type=["jpg", "jpeg", "png"], key="before_new")
-        if img_file:
-            img = Image.open(img_file)
-            resized = resize_image(img)
-            img_b64 = image_to_base64(resized)
-            edges = simple_edge_score(resized)
-            now_utc = datetime.now(timezone.utc)
-            session = collection.insert_one({
-                "session_active": True,
-                "start_time": now_utc,
-                "image_base64": img_b64,
-                "edges": edges,
-                "meta": {
-                    "pellizcos": [{
-                        "user": st.session_state.user_login,
-                        "datetime": now_utc,
-                        "mensaje": "Se subió el ANTES"
-                    }]
-                }
-            })
-            agrega_pellizco(session.inserted_id, st.session_state.user_login, "Se subió el ANTES")
-            actualiza_meta_global(st.session_state.user_login, "Se subió el ANTES")
-            st.success("¡Sesión iniciada! Cuando termines, detén el cronómetro.")
-            st.rerun()
+# --- SIN SESIÓN ACTIVA ---
+else:
+    st.info("No hay sesión activa. Inicia una nueva sesión subiendo una foto de ANTES.")
+    img_file = st.file_uploader("Sube la foto del ANTES", type=["jpg", "jpeg", "png"], key="before_new")
+    if img_file:
+        img = Image.open(img_file)
+        resized = resize_image(img)
+        img_b64 = image_to_base64(resized)
+        edges = simple_edge_score(resized)
+        now_utc = datetime.now(timezone.utc)
+        session = collection.insert_one({
+            "session_active": True,
+            "start_time": now_utc,
+            "image_base64": img_b64,
+            "edges": edges,
+            "meta": {
+                "pellizcos": [{
+                    "user": st.session_state.user_login,
+                    "datetime": now_utc,
+                    "mensaje": "Se subió el ANTES"
+                }]
+            }
+        })
+        agrega_pellizco(session.inserted_id, st.session_state.user_login, "Se subió el ANTES")
+        actualiza_meta_global(st.session_state.user_login, "Se subió el ANTES")
+        st.success("¡Sesión iniciada! Cuando termines, detén el cronómetro.")
+        st.rerun()
 
-with tabs[1]:
-    st.markdown("<h2 style='color:#2b7a78;'>🗂️ Historial de Sesiones</h2>", unsafe_allow_html=True)
-    registros = list(collection.find({"session_active": False}).sort("start_time", -1).limit(10))
+# --- HISTORIAL ---
+st.subheader("🗂️ Historial de Sesiones")
+
+registros = list(collection.find({"session_active": False}).sort("start_time", -1).limit(30))
+if registros:
+    data = []
     for r in registros:
-        ts = r["start_time"].astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
-        ts_end = r.get("end_time")
-        if isinstance(ts_end, datetime):
-            ts_end = ts_end.astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
+        inicio = r["start_time"].astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
+        fin = r.get("end_time")
+        if isinstance(fin, datetime):
+            fin = fin.astimezone(CO).strftime("%Y-%m-%d %H:%M:%S")
         else:
-            ts_end = "—"
+            fin = "—"
         dur = r.get("duration_seconds", 0)
         edges_before = r.get('edges', 0)
         edges_after = r.get('edges_after', 0)
         diff = edges_before - edges_after
         mejora = ""
         if diff > 0:
-            mejora = f"⬇️ <span style='color:#16a34a;'>-{diff:,}</span>"
+            mejora = f"⬇️ -{diff:,}"
         elif diff < 0:
-            mejora = f"⬆️ <span style='color:#dc2626;'>+{abs(diff):,}</span>"
+            mejora = f"⬆️ +{abs(diff):,}"
         else:
-            mejora = f"= 0"
-        st.markdown(
-            f"🗓️ <b>Inicio:</b> `{ts}` &nbsp; <b>Fin:</b> `{ts_end}` — ⏱️ `{format_seconds(dur)}` — "
-            f"{'✅ Bajó la saturación visual' if r.get('improved') else '❌ Sin cambio visible'}",
-            unsafe_allow_html=True
-        )
-        col1, col2 = st.columns(2, gap="large")
-        with col1:
-            st.image(base64_to_image(r.get("image_base64", "")), caption="ANTES", width=280)
-            st.markdown(f"Saturación: <code>{edges_before:,}</code>", unsafe_allow_html=True)
-        with col2:
-            st.image(base64_to_image(r.get("image_after", "")), caption="DESPUÉS", width=280)
-            st.markdown(f"Saturación: <code>{edges_after:,}</code>", unsafe_allow_html=True)
-        st.markdown(f"<h4 style='text-align:center;'>Diferencia: {mejora}</h4>", unsafe_allow_html=True)
-        st.markdown("---")
+            mejora = "= 0"
+        data.append({
+            "Inicio": inicio,
+            "Fin": fin,
+            "Duración": format_seconds(dur),
+            "Saturación antes": edges_before,
+            "Saturación después": edges_after if edges_after else "—",
+            "Diferencia": mejora,
+            "¿Mejoró?": "✅ Sí" if r.get('improved') else "❌ No"
+        })
+    st.dataframe(data, use_container_width=True)
+else:
+    st.info("No hay registros finalizados.")
 
-    with st.expander("🧨 Borrar todos los registros"):
-        st.warning("¡Esta acción eliminará todo el historial! No se puede deshacer.")
-        if st.button("🗑️ Borrar todo", use_container_width=True):
-            now_utc = datetime.now(timezone.utc)
-            collection.delete_many({})
-            actualiza_meta_global(st.session_state.user_login, "Se borraron todos los registros")
-            st.success("Registros eliminados.")
-            st.rerun()
+with st.expander("🧨 Borrar todos los registros"):
+    st.warning("¡Esta acción eliminará todo el historial! No se puede deshacer.")
+    if st.button("🗑️ Borrar todo", use_container_width=True):
+        now_utc = datetime.now(timezone.utc)
+        collection.delete_many({})
+        actualiza_meta_global(st.session_state.user_login, "Se borraron todos los registros")
+        st.success("Registros eliminados.")
+        st.rerun()
