@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh  # Refresco automático
 import pymongo
 from datetime import datetime, timezone
 from PIL import Image
@@ -7,16 +6,12 @@ import io, base64
 import pytz
 import time
 import getpass
-import os
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered")
 
-# --- Refresco automático global cada 3 segundos ---
-st_autorefresh(interval=3000, key="datarefresh")
-
 # --- CONEXIÓN A MONGO ---
-MONGO_URI = os.environ["MONGO_URI"]
+MONGO_URI = st.secrets["mongo_uri"]
 client = pymongo.MongoClient(MONGO_URI)
 db = client.cleanup
 collection = db.entries
