@@ -6,6 +6,7 @@ import io, base64
 import pytz
 import time
 import getpass
+import os
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered")
