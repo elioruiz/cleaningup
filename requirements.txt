@@ -2,4 +2,3 @@ streamlit
 pymongo
 pillow
 pytz
-streamlit_autorefresh
