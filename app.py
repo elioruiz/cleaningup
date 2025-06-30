@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh  # Refresco automático
 import pymongo
 from datetime import datetime, timezone
 from PIL import Image
@@ -6,10 +7,16 @@ import io, base64
 import pytz
 import time
 import getpass
+import os
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="🧹 Visualizador de Limpieza", layout="centered")
-MONGO_URI = st.secrets["mongo_uri"]
+
+# --- Refresco automático global cada 3 segundos ---
+st_autorefresh(interval=3000, key="datarefresh")
+
+# --- CONEXIÓN A MONGO ---
+MONGO_URI = os.environ["MONGO_URI"]
 client = pymongo.MongoClient(MONGO_URI)
 db = client.cleanup
 collection = db.entries
@@ -19,12 +26,6 @@ CO = pytz.timezone("America/Bogota")
 # --- Inicialización del documento meta (por si acaso) ---
 if meta.count_documents({}) == 0:
     meta.insert_one({"ultimo_pellizco_global": {}})
-
-# --- Visualización para depuración ---
-with st.expander("🧪 Estado de la colección meta (solo pruebas)", expanded=True):
-    meta_doc_debug = meta.find_one({}) or {}
-    st.json(meta_doc_debug)
-    st.write("session_state.ultimo_pellizco_global:", st.session_state.get("ultimo_pellizco_global", None))
 
 # --- FUNCIONES AUXILIARES ---
 def resize_image(img, max_width=300):
@@ -113,6 +114,7 @@ with tabs[0]:
     last = collection.find_one({"session_active": True}) or collection.find_one(sort=[("start_time", -1)])
 
     if last and last.get("session_active"):
+        st.info(f"Sesión activa iniciada por: {last['meta']['pellizcos'][0]['user']}")  # Info extra
         session_id = last["_id"]
         img_before = base64_to_image(last.get("image_base64", ""))
         before_edges = last.get("edges", 0)
