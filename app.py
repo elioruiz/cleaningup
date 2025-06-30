@@ -123,7 +123,6 @@ if estado == "activa":
         st.markdown(f"**Saturación visual antes:** `{before_edges:,}`")
     with col2:
         st.info("Cuando termines la limpieza, detén el cronómetro para finalizar la sesión.")
-        # Cronómetro
         start_time = last["start_time"]
         if start_time.tzinfo is None:
             start_time = start_time.replace(tzinfo=timezone.utc)
@@ -136,7 +135,6 @@ if estado == "activa":
             time.sleep(1)
             if stop:
                 end_time = datetime.now(timezone.utc)
-                # Asegura ambos aware
                 if last['start_time'].tzinfo is None:
                     start_aware = last['start_time'].replace(tzinfo=timezone.utc)
                 else:
@@ -220,13 +218,12 @@ else:
         st.rerun()
 
 # --- HISTORIAL ---
+
 st.subheader("🗂️ Historial de Sesiones")
 
 registros = list(collection.find({"session_active": False}).sort("start_time", -1).limit(30))
 if registros:
-    data = []
     for r in registros:
-        # Forzar tzinfo en start/end antes de convertir
         inicio = r["start_time"]
         if inicio.tzinfo is None:
             inicio = inicio.replace(tzinfo=timezone.utc)
@@ -242,23 +239,27 @@ if registros:
         edges_before = r.get('edges', 0)
         edges_after = r.get('edges_after', 0)
         diff = edges_before - edges_after
-        mejora = ""
         if diff > 0:
             mejora = f"⬇️ -{diff:,}"
         elif diff < 0:
             mejora = f"⬆️ +{abs(diff):,}"
         else:
             mejora = "= 0"
-        data.append({
-            "Inicio (CO)": inicio_col,
-            "Fin (CO)": fin_col,
-            "Duración": format_seconds(dur),
-            "Saturación antes": edges_before,
-            "Saturación después": edges_after if edges_after else "—",
-            "Diferencia": mejora,
-            "¿Mejoró?": "✅ Sí" if r.get('improved') else "❌ No"
-        })
-    st.dataframe(data, use_container_width=True)
+        improved = "✅ Sí" if r.get('improved') else "❌ No"
+        with st.expander(f"[{inicio_col}] {'Mejoró' if r.get('improved') else 'Sin cambio'}"):
+            cols = st.columns([1, 2])
+            with cols[0]:
+                st.image(base64_to_image(r.get("image_base64", "")), caption="ANTES", width=160)
+            with cols[1]:
+                st.markdown(f"""
+                - **Inicio:** `{inicio_col}`
+                - **Fin:** `{fin_col}`
+                - **Duración:** `{format_seconds(dur)}`
+                - **Saturación antes:** `{edges_before:,}`
+                - **Saturación después:** `{edges_after if edges_after else '—'}`
+                - **Diferencia:** {mejora}
+                - **¿Mejoró?:** {improved}
+                """)
 else:
     st.info("No hay registros finalizados.")
 
